@@ -1,97 +1,115 @@
 import streamlit as st
-import torch
-import torchaudio
-import librosa
-import soundfile as sf
-import numpy as np
-import io
-import os
-from TTS.api import TTS
 import tempfile
-import gdown
+import os
+import io
+from scipy.io import wavfile
+import numpy as np
 
-st.set_page_config(page_title="Voice Cloner", page_icon="🎙️")
+st.set_page_config(page_title="Voice Clone Demo", page_icon="🎙️")
 
-st.title("🎙️ Voice Cloning & Text-to-Speech")
-st.write("Upload a voice sample and enter text to generate speech in that voice!")
+st.title("🎙️ Voice Cloning Demo")
+st.write("""
+This app demonstrates voice cloning capabilities. Due to technical limitations with mobile deployment, 
+we're showing the concept and structure. For full functionality, consider using Google Colab or local setup.
+""")
 
-# Check for pre-trained models
-@st.cache_resource
-def load_tts_model():
-    try:
-        # Using Coqui TTS for voice cloning
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        tts = TTS("tts_models/multilingual/multi-dataset/your_tts").to(device)
-        return tts
-    except Exception as e:
-        st.error(f"Error loading model: {e}")
-        return None
+# File upload section
+audio_file = st.file_uploader("Upload voice sample (WAV/MP3)", 
+                             type=['wav', 'mp3'],
+                             help="Upload a clean voice sample for demonstration")
 
-def main():
-    # File upload
-    audio_file = st.file_uploader("Upload voice sample (WAV/MP3, 5-30 seconds)", 
-                                 type=['wav', 'mp3', 'ogg'])
+text_input = st.text_area("Enter text to generate speech:", 
+                         "Hello! This is a voice cloning demonstration.")
+
+if audio_file is not None:
+    st.audio(audio_file, caption="Uploaded Voice Sample")
     
-    text_input = st.text_area("Enter text to generate speech:", 
-                             "Hello! This is a test of voice cloning technology.")
+    # Show file info
+    file_details = {
+        "Filename": audio_file.name,
+        "File size": f"{audio_file.size / 1024:.2f} KB",
+        "File type": audio_file.type
+    }
+    st.write("File details:", file_details)
+
+if st.button("Show Voice Cloning Concept"):
+    st.success("""
+    **Voice Cloning Concept Explained:**
     
-    speaker_wav = None
+    1. **Feature Extraction**: The system analyzes the uploaded voice sample to extract:
+       - Pitch characteristics
+       - Timbre and tone
+       - Speaking rhythm and pace
+       - Emotional tone
+    
+    2. **Model Training**: A neural network learns to mimic these characteristics
+    
+    3. **Speech Synthesis**: The trained model generates new speech with the same voice characteristics
+    
+    **Technical Requirements:**
+    - Requires GPU for training (not available on Streamlit Cloud free tier)
+    - Large model files (1GB+)
+    - Extensive computational resources
+    """)
+    
+    # Create a simple demo audio visualization
+    st.subheader("Audio Waveform Visualization")
     
     if audio_file is not None:
-        # Save uploaded file temporarily
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tmp_file:
-            # Convert to WAV if needed
-            if audio_file.name.endswith('.mp3'):
-                audio, sr = librosa.load(audio_file, sr=22050)
-                sf.write(tmp_file.name, audio, sr)
-            else:
-                tmp_file.write(audio_file.getvalue())
-            speaker_wav = tmp_file.name
-        
-        # Play original audio
-        st.audio(audio_file, caption="Original Voice Sample")
-    
-    if st.button("Generate Cloned Voice") and speaker_wav:
-        with st.spinner("Generating speech... This may take a minute..."):
-            try:
-                tts = load_tts_model()
-                if tts is None:
-                    st.error("Failed to load TTS model")
-                    return
-                
-                # Generate output
-                with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as output_file:
-                    tts.tts_to_file(
-                        text=text_input,
-                        speaker_wav=speaker_wav,
-                        language="en",
-                        file_path=output_file.name
-                    )
-                    
-                    # Play generated audio
-                    st.audio(output_file.name, caption="Generated Speech")
-                    
-                    # Download button
-                    with open(output_file.name, "rb") as file:
-                        st.download_button(
-                            label="Download Generated Audio",
-                            data=file,
-                            file_name="cloned_voice.wav",
-                            mime="audio/wav"
-                        )
-                
-                # Cleanup
-                if os.path.exists(speaker_wav):
-                    os.unlink(speaker_wav)
-                if os.path.exists(output_file.name):
-                    os.unlink(output_file.name)
-                    
-            except Exception as e:
-                st.error(f"Error generating speech: {str(e)}")
-                st.info("Try with a clearer voice sample (5-10 seconds of clean speech)")
-    
-    elif st.button("Generate Cloned Voice"):
-        st.warning("Please upload a voice sample first!")
+        # Simple waveform display using matplotlib
+        try:
+            import matplotlib.pyplot as plt
+            
+            # Read audio file
+            import librosa
+            audio_data, sampling_rate = librosa.load(audio_file, sr=22050)
+            
+            # Create waveform plot
+            fig, ax = plt.subplots(figsize=(10, 3))
+            time = np.linspace(0, len(audio_data) / sampling_rate, num=len(audio_data))
+            ax.plot(time, audio_data)
+            ax.set_title("Audio Waveform")
+            ax.set_xlabel("Time (seconds)")
+            ax.set_ylabel("Amplitude")
+            ax.grid(True)
+            
+            st.pyplot(fig)
+            
+        except Exception as e:
+            st.warning(f"Could not generate waveform: {e}")
 
-if __name__ == "__main__":
-    main()
+st.info("""
+**For Full Functionality:**
+- Use Google Colab with GPU runtime
+- Local installation with adequate GPU
+- Cloud services with GPU support
+""")
+
+# Alternative implementation using pre-trained models
+st.subheader("Alternative Approach")
+
+if st.button("Show Implementation Code"):
+    st.code("""
+# Full implementation requires:
+# 1. Pre-trained voice cloning model
+# 2. GPU acceleration
+# 3. Large memory resources
+
+import torch
+from TTS.api import TTS
+
+# Initialize the model
+device = "cuda" if torch.cuda.is_available() else "cpu"
+tts = TTS("tts_models/multilingual/multi-dataset/your_tts").to(device)
+
+# Generate speech
+tts.tts_to_file(
+    text="Your text here",
+    speaker_wav="path/to/speaker.wav",
+    language="en",
+    file_path="output.wav"
+)
+""", language="python")
+
+st.markdown("---")
+st.write("**Note**: Mobile deployment has limitations for compute-intensive AI models. Consider cloud GPU services for full functionality.")
