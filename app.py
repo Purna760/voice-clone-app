@@ -1,135 +1,67 @@
 import streamlit as st
-import torch
-import torchaudio
-import librosa
-import soundfile as sf
-import numpy as np
-import io
-import os
 import tempfile
-import gdown
-from pydub import AudioSegment
+import os
+import io
 
 st.set_page_config(page_title="Voice Cloner", page_icon="🎙️")
 
 st.title("🎙️ Voice Cloning & Text-to-Speech")
-st.write("Upload a voice sample and enter text to generate speech in that voice!")
+st.write("⚠️ **Note:** Full voice cloning requires powerful GPU. For mobile deployment, we'll use a pre-trained voice.")
 
-# Check for pre-trained models
-@st.cache_resource
 def load_tts_model():
+    """Load TTS model with error handling"""
     try:
-        # Using Coqui TTS for voice cloning
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        st.info(f"Using device: {device}")
-        
-        # Initialize TTS with a voice cloning model
-        tts = TTS("tts_models/multilingual/multi-dataset/your_tts").to(device)
+        from TTS.api import TTS
+        # Use a pre-trained model that doesn't require voice cloning
+        tts = TTS("tts_models/en/ljspeech/tacotron2-DDC_ph")
         return tts
     except Exception as e:
-        st.error(f"Error loading model: {e}")
+        st.error(f"Model loading failed: {str(e)}")
         return None
 
-def convert_audio(input_path, output_path):
-    """Convert audio to WAV format with proper sampling rate"""
-    try:
-        audio = AudioSegment.from_file(input_path)
-        audio = audio.set_frame_rate(22050)
-        audio = audio.set_channels(1)
-        audio.export(output_path, format="wav")
-        return True
-    except Exception as e:
-        st.error(f"Audio conversion error: {e}")
-        return False
-
 def main():
-    st.sidebar.info("""
-    **Instructions:**
-    1. Upload a clear voice sample (5-30 seconds)
-    2. Enter text to generate
-    3. Click Generate button
-    4. Wait for processing
-    """)
+    st.sidebar.header("Settings")
+    voice_option = st.sidebar.selectbox(
+        "Choose Voice Type",
+        ["Pre-trained Female Voice", "Pre-trained Male Voice"]
+    )
     
-    # File upload
-    audio_file = st.file_uploader("Upload voice sample (WAV/MP3, 5-30 seconds)", 
-                                 type=['wav', 'mp3', 'ogg', 'm4a'])
+    text_input = st.text_area(
+        "Enter text to generate speech:",
+        "Hello! This is a demonstration of text to speech technology.",
+        height=100
+    )
     
-    text_input = st.text_area("Enter text to generate speech:", 
-                             "Hello! This is a test of voice cloning technology.")
-    
-    speaker_wav = None
-    
-    if audio_file is not None:
-        # Display audio info
-        st.audio(audio_file, caption="Uploaded Voice Sample")
-        
-        # Save uploaded file temporarily
-        with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{audio_file.name.split(".")[-1]}') as tmp_file:
-            tmp_file.write(audio_file.getvalue())
-            input_path = tmp_file.name
-        
-        # Convert to proper format
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as converted_file:
-            if convert_audio(input_path, converted_file.name):
-                speaker_wav = converted_file.name
-                st.success("✅ Audio file processed successfully!")
-            else:
-                st.error("❌ Failed to process audio file")
-        
-        # Cleanup input file
-        if os.path.exists(input_path):
-            os.unlink(input_path)
-    
-    col1, col2 = st.columns([1, 1])
-    
-    with col1:
-        if st.button("🚀 Generate Cloned Voice", use_container_width=True):
-            if not speaker_wav:
-                st.warning("⚠️ Please upload a voice sample first!")
-                return
-            
-            with st.spinner("🔄 Generating speech... This may take 1-2 minutes..."):
-                try:
-                    # Initialize TTS
-                    from TTS.api import TTS
-                    tts = TTS(model_name="tts_models/multilingual/multi-dataset/your_tts")
+    if st.button("Generate Speech"):
+        with st.spinner("Loading model and generating speech..."):
+            try:
+                tts = load_tts_model()
+                if tts is None:
+                    st.error("Failed to load TTS model. This might be due to memory limitations.")
+                    return
+                
+                # Generate speech
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as output_file:
+                    tts.tts_to_file(text=text_input, file_path=output_file.name)
                     
-                    # Generate output
-                    with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as output_file:
-                        tts.tts_to_file(
-                            text=text_input,
-                            speaker_wav=speaker_wav,
-                            language="en",
-                            file_path=output_file.name
-                        )
-                        
-                        # Play generated audio
-                        st.audio(output_file.name, caption="Generated Speech")
-                        
-                        # Download button
-                        with open(output_file.name, "rb") as file:
-                            st.download_button(
-                                label="📥 Download Generated Audio",
-                                data=file,
-                                file_name="cloned_voice.wav",
-                                mime="audio/wav",
-                                use_container_width=True
-                            )
+                    # Display audio
+                    audio_bytes = open(output_file.name, 'rb').read()
+                    st.audio(audio_bytes, format='audio/wav')
                     
-                    st.success("✅ Voice generation completed!")
-                    
-                except Exception as e:
-                    st.error(f"❌ Error generating speech: {str(e)}")
-                    st.info("💡 Try with a clearer voice sample (5-10 seconds of clean speech)")
-    
-    with col2:
-        if st.button("🔄 Clear All", use_container_width=True):
-            st.rerun()
-    
-    # Cleanup temporary files
-    if speaker_wav and os.path.exists(speaker_wav):
-        os.unlink(speaker_wav)
+                    # Download button
+                    st.download_button(
+                        label="Download Audio",
+                        data=audio_bytes,
+                        file_name="generated_speech.wav",
+                        mime="audio/wav"
+                    )
+                
+                # Cleanup
+                os.unlink(output_file.name)
+                
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
+                st.info("This might be due to limited resources on Streamlit Cloud. Try shorter text.")
 
 if __name__ == "__main__":
     main()
