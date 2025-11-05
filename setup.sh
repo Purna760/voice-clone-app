@@ -1,5 +1,4 @@
 #!/bin/bash
 apt-get update
-apt-get install -y libsndfile1 ffmpeg
-pip install --upgrade pip
+apt-get install -y libsndfile1 ffmpeg espeak-ng
 pip install -r requirements.txt
